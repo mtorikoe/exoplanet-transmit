@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Find the Exoplanet — Subaru Telescope</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --bg:    #0a1e24;
+  --deep:  #071419;
+  --panel: #12353f;
+  --p2:    #1a4452;
+  --mid:   #244b6d;
+  --rim:   #2e6080;
+  --accent:#7ecfed;
+  --gold:  #f0c060;
+  --green: #5ec47a;
+  --red:   #e05555;
+  --text:  #d8eef6;
+  --muted: #7aadbe;
+  --dim:   #3a7088;
+}
+body {
+  background:var(--bg); color:var(--text);
+  font-family:'Times New Roman',Times,serif;
+  font-style:normal;
+  height:100vh;
+  display:grid;
+  grid-template-rows:auto auto 1fr auto;
+  overflow:hidden;
+  user-select:none;
+}
+
+/* ── HEADER ── */
+header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:7px 18px; border-bottom:1px solid var(--p2);
+  background:var(--panel); gap:10px;
+}
+.logo { font-size:12px; color:var(--muted); letter-spacing:.06em; }
+.logo span { color:var(--accent); font-weight:bold; }
+
+/* ── PHASE BAR ── */
+.phase-bar {
+  display:flex; border-bottom:1px solid var(--p2);
+  background:var(--deep);
+}
+.phase-step {
+  flex:1; padding:5px 6px; font-size:10px; letter-spacing:.06em;
+  color:var(--dim); border-right:1px solid var(--p2);
+  text-align:center; transition:color .3s, background .3s;
+}
+.phase-step:last-child { border-right:none; }
+.phase-step.active { color:var(--accent); background:var(--panel); }
+.phase-step.done   { color:var(--green);  background:#0d2a1a; }
+
+/* ── MAIN ── */
+main {
+  display:grid;
+  grid-template-columns:1fr 310px;
+  overflow:hidden;
+}
+
+/* ── TELESCOPE ── */
+#tel-panel {
+  position:relative; overflow:hidden; background:#000;
+  border-right:1px solid var(--p2);
+  cursor:crosshair;
+}
+#tel-panel::after {
+  content:''; position:absolute; inset:0; pointer-events:none;
+  background:radial-gradient(ellipse at center,transparent 50%,rgba(0,0,0,.75)100%);
+}
+#sfCvs   { position:absolute; inset:0; }
+#mainCvs { position:absolute; inset:0; width:100%; height:100%; }
+#reticle {
+  position:absolute; width:48px; height:48px;
+  border:1px solid rgba(126,207,237,.6); border-radius:50%;
+  pointer-events:none; display:none;
+  transform:translate(-50%,-50%);
+}
+#reticle::before,#reticle::after {
+  content:''; position:absolute; background:rgba(126,207,237,.45);
+}
+#reticle::before { width:1px; height:100%; left:50%; }
+#reticle::after  { height:1px; width:100%; top:50%; }
+
+/* ── SIDE PANEL ── */
+aside {
+  display:flex; flex-direction:column;
+  background:var(--panel); overflow-y:auto; overflow-x:hidden;
+}
+.panel-section {
+  padding:10px 12px; border-bottom:1px solid var(--p2); flex-shrink:0;
+}
+.panel-label {
+  font-size:9px; letter-spacing:.12em; color:var(--muted);
+  margin-bottom:6px; text-transform:uppercase;
+}
+
+/* ── FOUR LC MONITORS (vertical stack) ── */
+.lc-stack { display:flex; flex-direction:column; gap:4px; }
+
+.lc-cell {
+  position:relative;
+  background:var(--deep); border-radius:3px; border:1px solid var(--p2);
+  overflow:hidden;
+}
+.lc-cell.judgeable { cursor:crosshair; }
+.lc-cell-label {
+  position:absolute; top:2px; left:5px;
+  font-size:9px; color:var(--muted); pointer-events:none; z-index:2;
+  font-style:normal;
+}
+.lc-cell-note {
+  position:absolute; top:2px; right:5px;
+  font-size:8px; color:var(--dim); pointer-events:none; z-index:2;
+}
+.lc-cell canvas { display:block; width:100%; height:52px; }
+/* SVG overlay for range rect */
+.lc-cell svg {
+  position:absolute; inset:0; width:100%; height:100%;
+  pointer-events:none; z-index:3;
+}
+
+/* judge UI */
+#judge-prompt {
+  font-size:10px; color:var(--gold); margin-top:5px; min-height:13px;
+}
+#flat-btn {
+  display:none; width:100%; margin-top:5px; padding:5px 8px;
+  background:transparent; border:1px solid var(--dim);
+  border-radius:3px; color:var(--muted); font-family:'Times New Roman',serif;
+  font-size:11px; cursor:pointer; font-style:normal;
+  transition:border-color .2s, color .2s;
+}
+#flat-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+/* ── STATUS ── */
+#status-box {
+  padding:9px; border-radius:4px; background:var(--p2);
+  font-size:11px; line-height:1.65; min-height:50px; transition:background .3s;
+}
+#status-box.success { background:#0d2a18; border:1px solid #2a6635; }
+#status-box.miss    { background:#2a0d0d; border:1px solid #663535; }
+#status-box.hint    { background:#2a220d; border:1px solid #664a20; }
+
+/* ── PLANET CARD ── */
+#planet-card {
+  display:none; padding:9px; background:var(--p2); border-radius:4px;
+  border:1px solid var(--rim); font-size:11px; line-height:1.7; margin-top:7px;
+}
+.pname { font-size:13px; font-weight:bold; margin-bottom:3px; }
+.pdesc { color:var(--muted); }
+
+/* ── FOOTER ── */
+footer {
+  padding:7px 18px; background:var(--panel); border-top:1px solid var(--p2);
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+}
+.instr { font-size:11px; color:var(--muted); max-width:400px; line-height:1.5; }
+.btn-primary {
+  padding:6px 16px; background:var(--mid); border:1px solid var(--rim);
+  border-radius:3px; color:var(--text); font-family:'Times New Roman',serif;
+  font-size:12px; cursor:pointer; letter-spacing:.03em;
+  transition:background .2s;
+}
+.btn-primary:hover { background:var(--rim); }
+.hint-btn {
+  padding:5px 12px; background:transparent; border:1px solid var(--dim);
+  border-radius:3px; color:var(--muted); font-family:'Times New Roman',serif;
+  font-size:11px; cursor:pointer; transition:border-color .2s, color .2s;
+}
+.hint-btn:hover { border-color:var(--gold); color:var(--gold); }
+
+/* ── ATTRACT ── */
+#attract {
+  position:fixed; inset:0; background:rgba(7,20,25,.96); z-index:100;
+  display:flex; flex-direction:column; align-items:center;
+  justify-content:center; gap:16px; text-align:center; padding:36px;
+}
+#attract h1 {
+  font-size:clamp(26px,4vw,48px); color:var(--accent);
+  letter-spacing:.03em; line-height:1.2; font-weight:normal;
+}
+#attract p { font-size:14px; color:var(--muted); max-width:460px; line-height:1.75; }
+.subtag {
+  font-size:11px; color:var(--dim); letter-spacing:.14em;
+  border:1px solid var(--p2); padding:4px 14px; border-radius:2px;
+}
+.steps-row {
+  display:flex; gap:8px; flex-wrap:wrap; justify-content:center; max-width:500px;
+}
+.step-pill {
+  background:var(--panel); border:1px solid var(--p2);
+  border-radius:2px; padding:4px 11px; font-size:10px; color:var(--muted);
+}
+.step-pill span { color:var(--accent); margin-right:3px; }
+.pulse-dot {
+  width:9px; height:9px; border-radius:50%; background:var(--accent);
+  animation:pulse 1.6s ease-in-out infinite; flex-shrink:0;
+}
+@keyframes pulse {
+  0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.3;transform:scale(.6)}
+}
+
+/* ── ROUND OVERLAY ── */
+#round-overlay {
+  position:fixed; inset:0; background:rgba(7,20,25,.9); z-index:50;
+  display:none; align-items:center; justify-content:center;
+  flex-direction:column; gap:14px; text-align:center; padding:28px;
+}
+#round-overlay h2 { font-size:28px; color:var(--gold); font-weight:normal; }
+#round-overlay p  { font-size:13px; color:var(--muted); max-width:340px; line-height:1.6; }
+.planet-ball { width:80px; height:80px; border-radius:50%; margin:0 auto; }
+#fact-card {
+  background:var(--panel); border:1px solid var(--p2);
+  border-radius:4px; padding:12px 16px; font-size:11px;
+  color:var(--muted); line-height:1.85; max-width:310px;
+}
+</style>
+</head>
+<body>
+
+<!-- ATTRACT -->
+<div id="attract">
+  <div class="subtag">SUBARU TELESCOPE · HYPER SUPRIME-CAM · MAUNA KEA</div>
+  <h1>Find the Hidden Planet</h1>
+  <p>When a planet crosses in front of its star, the star dims slightly. This is called a transit. Watch all four wavelength channels at once and drag to mark where you see the dip.</p>
+  <div class="steps-row">
+    <div class="step-pill"><span>①</span>Choose a star</div>
+    <div class="step-pill"><span>②</span>Four channels scan</div>
+    <div class="step-pill"><span>③</span>Hover to mark the dip</div>
+    <div class="step-pill"><span>④</span>Confirm detection</div>
+    <div class="step-pill"><span>⑤</span>Meet the exoplanet</div>
+  </div>
+  <canvas id="attract-lc" width="300" height="80"
+    style="border-radius:3px;border:1px solid #1a4452;display:block;"></canvas>
+  <div style="display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;">
+    <div class="pulse-dot"></div>
+    Touch or click anywhere to begin
+  </div>
+</div>
+
+<!-- ROUND COMPLETE -->
+<div id="round-overlay">
+  <div id="planet-ball" class="planet-ball"></div>
+  <h2 id="rc-title"></h2>
+  <p id="rc-msg"></p>
+  <div id="fact-card"></div>
+  <button class="btn-primary" id="overlay-btn"></button>
+</div>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">HSC / <span>SUBARU</span> · Exoplanet Transit Photometry</div>
+</header>
+
+<!-- PHASE BAR -->
+<div class="phase-bar">
+  <div class="phase-step" id="ph0">① Choose a star</div>
+  <div class="phase-step" id="ph1">② Scanning curves</div>
+  <div class="phase-step" id="ph2">③ Mark the anomaly</div>
+  <div class="phase-step" id="ph3">④ Result</div>
+  <div class="phase-step" id="ph4">⑤ Discovery</div>
+</div>
+
+<main>
+  <!-- Telescope -->
+  <div id="tel-panel">
+    <canvas id="sfCvs"></canvas>
+    <canvas id="mainCvs"></canvas>
+    <div id="reticle"></div>
+  </div>
+
+  <!-- Side -->
+  <aside>
+    <div class="panel-section">
+      <div class="panel-label">Four-Channel Light Curve Monitor</div>
+      <div class="lc-stack" id="lc-stack">
+        <!-- built by JS -->
+      </div>
+      <div id="judge-prompt"></div>
+      <button id="flat-btn" onclick="playerFlat()">No anomaly — curves look flat</button>
+    </div>
+
+    <div class="panel-section" style="flex:1;">
+      <div class="panel-label">Detection Status</div>
+      <div id="status-box">
+        <span style="color:var(--muted)">Click a star in the field to begin scanning.</span>
+      </div>
+      <div id="planet-card">
+        <div class="pname" id="pc-name"></div>
+        <div class="pdesc" id="pc-desc"></div>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<footer>
+  <p class="instr" id="footer-instr">
+    Click any star in the field to lock on and begin the light curve scan.
+  </p>
+  <div style="display:flex;gap:8px;">
+    <button class="hint-btn" onclick="giveHint()">Hint</button>
+    <button class="btn-primary" onclick="nextRound()">New star field</button>
+  </div>
+</footer>
+
+<script>
+// ══════════════════════════════════════════════════
+//  DATA
+// ══════════════════════════════════════════════════
+const WL = [
+  { name:'Visible (g)',   range:'400–550 nm', color:'#b8e860', dip:.970,
+    note:'Moderate dip. Standard baseline.' },
+  { name:'Red (i)',       range:'700–820 nm', color:'#f06060', dip:.963,
+    note:'Slightly deeper — less limb-darkening.' },
+  { name:'Infrared (z)',  range:'900–1000 nm',color:'#ff9955', dip:.956,
+    note:'Deepest dip — most uniform disk.' },
+  { name:'Blue (u)',      range:'320–400 nm', color:'#70aaff', dip:.976,
+    note:'Shallowest + noisiest channel.' },
+];
+
+const PLANETS = [
+  { name:'Kepler-22b type',   desc:'Super-Earth in the habitable zone. Surface may allow liquid water. Radius: 2.4x Earth.',    color:'#4fc3f7' },
+  { name:'Hot Jupiter',       desc:'Gas giant orbiting extremely close. A year lasts 3 Earth days. Surface: 1,200 C.',          color:'#ff7043' },
+  { name:'Mini-Neptune',      desc:'Thick hydrogen atmosphere, no solid surface. Radius 3x Earth. Common in our galaxy.',       color:'#9575cd' },
+  { name:'Rocky super-Earth', desc:'About twice Earth mass. Could host liquid water at the right orbital distance.',            color:'#8d6e63' },
+  { name:'Ice giant',         desc:'Frozen methane and ammonia world — similar to Uranus and Neptune in our solar system.',     color:'#80cbc4' },
+  { name:'Lava world',        desc:'Tidally locked magma ocean. One face permanently toward its star at 2,500 C.',              color:'#ef5350' },
+];
+
+// ══════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════
+let S = {
+  phase:'attract',
+  stars:[], targetIdx:-1, selectedIdx:-1,
+  hasTransit:false,
+  lcData:[null,null,null,null],
+  lcAnimT:0, lcDone:false,
+  // Fixed per field — set once when field is generated, never changed on star click
+  fieldTransitCenter:0, fieldTransitWidth:0,
+  // Per-scan (copies of field values when target selected, dummy when not)
+  transitCenter:0, transitWidth:0,
+  hoverFrac:-1,
+  dragStart:-1, dragEnd:-1, dragging:false,
+  confirmed:false,
+  score:0, round:1,
+  hintUsed:false,
+  planetFact:PLANETS[0],
+  planetDiscovered:false,  // true once player correctly finds planet in this field
+};
+
+// ══════════════════════════════════════════════════
+//  CANVAS
+// ══════════════════════════════════════════════════
+const telPanel = document.getElementById('tel-panel');
+const sfCvs    = document.getElementById('sfCvs');
+const mainCvs  = document.getElementById('mainCvs');
+const reticle  = document.getElementById('reticle');
+let W, H;
+
+function resize() {
+  W = telPanel.offsetWidth; H = telPanel.offsetHeight;
+  sfCvs.width = mainCvs.width = W;
+  sfCvs.height = mainCvs.height = H;
+}
+
+// ══════════════════════════════════════════════════
+//  STARFIELD  (drawn once per field, never on retry)
+// ══════════════════════════════════════════════════
+function drawStarfield() {
+  const ctx = sfCvs.getContext('2d');
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+  for (let i=0;i<300;i++) {
+    const x=Math.random()*W, y=Math.random()*H;
+    const r=Math.random()*.75+.1, op=Math.random()*.3+.04;
+    ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2);
+    ctx.fillStyle=`rgba(200,220,255,${op})`; ctx.fill();
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  GENERATE GAME STARS  (once per field)
+// ══════════════════════════════════════════════════
+function generateStars() {
+  const n=7+Math.floor(Math.random()*4);
+  const arr=[];
+  for (let i=0;i<n;i++) {
+    let x,y,ok,t=0;
+    do {
+      x=80+Math.random()*(W-160); y=60+Math.random()*(H-120);
+      ok=arr.every(s=>Math.hypot(s.x-x,s.y-y)>90); t++;
+    } while(!ok && t<60);
+    const br=.45+Math.random()*.55;
+    const tp=Math.random();
+    const col=tp<.3?'#bcd2ff':tp<.7?'#fff5d0':'#ffd0a0';
+    arr.push({x,y,brightness:br,baseColor:col,phi:Math.random()*Math.PI*2});
+  }
+  return arr;
+}
+
+// ══════════════════════════════════════════════════
+//  LC DATA
+// ══════════════════════════════════════════════════
+function makeLCData(hasTransit, dipDepth, tc, tw) {
+  const pts=120, data=[];
+  for (let i=0;i<pts;i++){
+    const t=i/pts;
+    let v=1+(Math.random()-.5)*.009;
+    if (hasTransit){
+      const dt=(t-tc)/tw;
+      v -= (1-dipDepth)*Math.max(0,1-dt*dt*1.1);
+    }
+    data.push(Math.min(1.04,Math.max(.82,v)));
+  }
+  return data;
+}
+
+function generateAllLC(hasTransit) {
+  // Always use the field-fixed transit position so it never moves between star clicks
+  S.transitCenter = S.fieldTransitCenter;
+  S.transitWidth  = S.fieldTransitWidth;
+  S.lcData = WL.map(w => makeLCData(hasTransit, w.dip, S.transitCenter, S.transitWidth));
+}
+
+// ══════════════════════════════════════════════════
+//  BUILD LC STACK (vertical)
+// ══════════════════════════════════════════════════
+const lcCvsList = [];
+
+function buildLCStack() {
+  const stack = document.getElementById('lc-stack');
+  stack.innerHTML='';
+  lcCvsList.length=0;
+
+  WL.forEach((w,i) => {
+    const cell = document.createElement('div');
+    cell.className='lc-cell';
+    cell.id=`lc-cell-${i}`;
+
+    // label left
+    const lbl=document.createElement('div');
+    lbl.className='lc-cell-label';
+    lbl.textContent=`${w.name}`;
+    cell.appendChild(lbl);
+
+    // note right
+    const note=document.createElement('div');
+    note.className='lc-cell-note';
+    note.textContent=w.range;
+    cell.appendChild(note);
+
+    const cvs=document.createElement('canvas');
+    cell.appendChild(cvs);
+    lcCvsList.push(cvs);
+
+    // SVG overlay
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.id=`lc-svg-${i}`;
+    cell.appendChild(svg);
+
+    stack.appendChild(cell);
+  });
+
+  attachLCHoverListeners();
+}
+
+// ══════════════════════════════════════════════════
+//  HOVER / DRAG LISTENERS  (attached to whole stack)
+// ══════════════════════════════════════════════════
+function attachLCHoverListeners() {
+  const stack=document.getElementById('lc-stack');
+
+  function fracFromX(e) {
+    // use cell-0 width as reference (all same width)
+    const cell=document.getElementById('lc-cell-0');
+    if (!cell) return -1;
+    const r=cell.getBoundingClientRect();
+    const cx=e.touches?e.touches[0].clientX:e.clientX;
+    return Math.max(0,Math.min(1,(cx-r.left)/r.width));
+  }
+
+  // hover — show vertical line in all cells
+  stack.addEventListener('mousemove', e=>{
+    if (S.phase!=='judge') return;
+    S.hoverFrac=fracFromX(e);
+  });
+  stack.addEventListener('mouseleave',()=>{ S.hoverFrac=-1; });
+
+  // click — place a fixed-width selection window centred on click point
+  stack.addEventListener('click', e=>{
+    if (S.phase!=='judge') return;
+    if (S.dragging) return; // let drag finish via mouseup instead
+    const f=fracFromX(e);
+    const half=0.10;
+    S.dragStart=Math.max(0,f-half);
+    S.dragEnd=Math.min(1,f+half);
+    activateConfirm();
+  });
+
+  // drag — range selection (for precision)
+  stack.addEventListener('mousedown',e=>{
+    if (S.phase!=='judge') return;
+    S.dragStart=fracFromX(e); S.dragEnd=S.dragStart; S.dragging=true;
+    S.confirmed=false;
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove',e=>{
+    if (!S.dragging||S.phase!=='judge') return;
+    S.dragEnd=fracFromX(e);
+  });
+  window.addEventListener('mouseup',e=>{
+    if (!S.dragging||S.phase!=='judge') return;
+    const endF=fracFromX(e);
+    S.dragEnd=endF; S.dragging=false;
+    const span=Math.abs(S.dragEnd-S.dragStart);
+    if (span<=0.02) {
+      // tiny drag treated as click — expand to window
+      const f=(S.dragStart+S.dragEnd)/2, half=0.10;
+      S.dragStart=Math.max(0,f-half); S.dragEnd=Math.min(1,f+half);
+    }
+    activateConfirm();
+  });
+
+  // touch — tap or drag
+  stack.addEventListener('touchstart',e=>{
+    if (S.phase!=='judge') return;
+    S.dragStart=fracFromX(e); S.dragEnd=S.dragStart; S.dragging=true; S.confirmed=false;
+  },{passive:true});
+  stack.addEventListener('touchmove',e=>{
+    if (!S.dragging||S.phase!=='judge') return;
+    S.dragEnd=fracFromX(e);
+  },{passive:true});
+  stack.addEventListener('touchend',e=>{
+    if (!S.dragging||S.phase!=='judge') return;
+    S.dragging=false;
+    const span=Math.abs(S.dragEnd-S.dragStart);
+    if (span<=0.02) {
+      const f=(S.dragStart+S.dragEnd)/2, half=0.10;
+      S.dragStart=Math.max(0,f-half); S.dragEnd=Math.min(1,f+half);
+    }
+    activateConfirm();
+  },{passive:true});
+}
+
+function activateConfirm() {
+  const fb=document.getElementById('flat-btn');
+  fb.style.display='block';
+  fb.textContent='Confirm — this region shows the anomaly';
+  fb.onclick=()=>playerConfirm();
+}
+
+// ══════════════════════════════════════════════════
+//  RENDER LC (all four, every frame)
+// ══════════════════════════════════════════════════
+function renderAllLC() {
+  // progress scan
+  if (S.phase==='scan' && S.lcAnimT<119) {
+    S.lcAnimT+=.85;
+    if (S.lcAnimT>=119) {
+      S.lcAnimT=119;
+      if (!S.lcDone) { S.lcDone=true; onScanComplete(); }
+    }
+  }
+  const scanIdx=Math.floor(S.lcAnimT);
+
+  WL.forEach((w,i)=>{
+    const cvs=lcCvsList[i];
+    if (!cvs) return;
+    const cw=cvs.width=cvs.offsetWidth||280;
+    const ch=cvs.height=cvs.offsetHeight||52;
+    const ctx=cvs.getContext('2d');
+    ctx.fillStyle='#000'; ctx.fillRect(0,0,cw,ch);
+
+    if (!S.lcData[i]) {
+      ctx.fillStyle='#1a4452'; ctx.font='9px Times New Roman';
+      ctx.fillText('awaiting selection…',6,ch/2+4);
+      return;
+    }
+
+    const pts=S.lcData[i].length;
+
+    // grid lines
+    ctx.strokeStyle='#1a4452'; ctx.lineWidth=.5;
+    [.25,.5,.75].forEach(f=>{
+      const y=5+f*(ch-10);
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cw,y); ctx.stroke();
+    });
+
+    // draw LC up to scan head
+    const lim=(S.phase==='pick')?0:Math.min(scanIdx,pts-1);
+    if (lim>0) {
+      ctx.beginPath(); ctx.strokeStyle=w.color; ctx.lineWidth=1.5;
+      for (let k=0;k<=lim;k++){
+        const x=(k/pts)*cw;
+        const v=S.lcData[i][k];
+        const y=5+(1-(v-.82)/.26)*(ch-10);
+        k===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+      // fill
+      ctx.lineTo((lim/pts)*cw,ch-2); ctx.lineTo(0,ch-2); ctx.closePath();
+      ctx.fillStyle=w.color+'14'; ctx.fill();
+    }
+
+    // scan cursor
+    if (S.phase==='scan' && !S.lcDone) {
+      const sx=(scanIdx/pts)*cw;
+      ctx.strokeStyle='#ffffff22'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(sx,0); ctx.lineTo(sx,ch); ctx.stroke();
+    }
+
+    // ── SVG overlays (range rect + hover line) ──
+    const svg=document.getElementById(`lc-svg-${i}`);
+    if (!svg) return;
+    svg.innerHTML='';
+
+    // hover vertical line (judge phase, no active drag)
+    if (S.phase==='judge' && S.hoverFrac>=0 && !S.dragging) {
+      const hx=S.hoverFrac*cw;
+      const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1',hx); line.setAttribute('y1',0);
+      line.setAttribute('x2',hx); line.setAttribute('y2',ch);
+      line.setAttribute('stroke','rgba(126,207,237,0.4)');
+      line.setAttribute('stroke-width','1');
+      line.setAttribute('stroke-dasharray','2,3');
+      svg.appendChild(line);
+    }
+
+    // range rect (while dragging or after drag)
+    if ((S.phase==='judge') && S.dragStart>=0 && Math.abs(S.dragEnd-S.dragStart)>.005) {
+      const a=Math.min(S.dragStart,S.dragEnd)*cw;
+      const b=Math.max(S.dragStart,S.dragEnd)*cw;
+
+      const rect=document.createElementNS('http://www.w3.org/2000/svg','rect');
+      rect.setAttribute('x',a); rect.setAttribute('y',3);
+      rect.setAttribute('width',b-a); rect.setAttribute('height',ch-6);
+      rect.setAttribute('fill','rgba(240,192,96,0.10)');
+      rect.setAttribute('stroke','#f0c060');
+      rect.setAttribute('stroke-width','1.2');
+      rect.setAttribute('stroke-dasharray','3,3');
+      svg.appendChild(rect);
+
+      // tiny label on first cell only
+      if (i===0) {
+        const txt=document.createElementNS('http://www.w3.org/2000/svg','text');
+        txt.setAttribute('x',(a+b)/2); txt.setAttribute('y',14);
+        txt.setAttribute('text-anchor','middle');
+        txt.setAttribute('fill','#f0c060');
+        txt.setAttribute('font-size','8');
+        txt.setAttribute('font-family','Times New Roman');
+        txt.textContent='selection';
+        svg.appendChild(txt);
+      }
+    }
+  });
+
+  requestAnimationFrame(renderAllLC);
+}
+
+// ══════════════════════════════════════════════════
+//  PHASE CONTROL
+// ══════════════════════════════════════════════════
+function setPhase(ph) {
+  S.phase=ph;
+  const map={pick:0,scan:1,judge:2,result:3};
+  const cur=map[ph]??-1;
+  for (let i=0;i<5;i++) {
+    const el=document.getElementById('ph'+i);
+    el.className='phase-step'+(i<cur?' done':i===cur?' active':'');
+  }
+}
+
+function onScanComplete() {
+  setPhase('judge');
+  for(let i=0;i<4;i++){
+    const c=document.getElementById(`lc-cell-${i}`);
+    if(c) c.classList.add('judgeable');
+  }
+  document.getElementById('judge-prompt').textContent=
+    'Hover to inspect, then drag across the monitors to mark the anomalous region.';
+  document.getElementById('flat-btn').style.display='block';
+  document.getElementById('flat-btn').textContent='No anomaly — curves look flat';
+  document.getElementById('flat-btn').onclick=()=>playerFlat();
+  document.getElementById('footer-instr').textContent=
+    'Drag across the light curve monitors to mark the region you think shows the transit dip.';
+  setStatus('','Mark the anomaly in the light curve monitor above.','');
+}
+
+// ══════════════════════════════════════════════════
+//  PLAYER ACTIONS
+// ══════════════════════════════════════════════════
+function playerFlat() {
+  document.getElementById('flat-btn').style.display='none';
+  document.getElementById('judge-prompt').textContent='';
+  S.dragStart=-1; S.dragEnd=-1;
+  setPhase('result');
+  if (S.hasTransit) {
+    setStatus('miss','Transit missed',
+      'This star does host a planet. The brightness dipped by '+
+      ((1-WL[2].dip)*100).toFixed(1)+'% in infrared. Look for a small consistent dip across all four channels.');
+    setTimeout(()=>finishRound(false),700);
+  } else {
+    S.score++;
+    setStatus('success','Correct — no transit detected',
+      'Good observation. This star shows flat, steady brightness in all channels. No planet is transiting right now.');
+    setTimeout(()=>finishRound(true,'clean'),700);
+  }
+}
+
+function playerConfirm() {
+  document.getElementById('flat-btn').style.display='none';
+  document.getElementById('judge-prompt').textContent='';
+  setPhase('result');
+
+  const a=Math.min(S.dragStart,S.dragEnd);
+  const b=Math.max(S.dragStart,S.dragEnd);
+  const tc=S.transitCenter, tw=S.transitWidth;
+
+  if (S.hasTransit) {
+    const overlap=a<(tc+tw*2.0) && b>(tc-tw*2.0);
+    if (overlap) {
+      S.score++;
+      S.planetDiscovered=true;
+      setStatus('success','Transit confirmed',
+        'Well detected. The dip appears at the same position across all four channels, '+
+        'confirming a planetary transit rather than a stellar flare or noise.');
+      setTimeout(()=>finishRound(true,'transit'),800);
+    } else {
+      setStatus('miss','Wrong region',
+        'There is a real transit in these curves, but your selection missed it. '+
+        'The dip is '+(b<tc?'later (to the right)':'earlier (to the left)')+' in the time series. Try again with the same star.');
+      // DO NOT advance round — let player retry on same field
+      S.dragStart=-1; S.dragEnd=-1;
+      setPhase('judge');
+      for(let i=0;i<4;i++){
+        const c=document.getElementById(`lc-cell-${i}`);
+        if(c) c.classList.add('judgeable');
+      }
+      document.getElementById('flat-btn').style.display='block';
+      document.getElementById('flat-btn').textContent='No anomaly — curves look flat';
+      document.getElementById('flat-btn').onclick=()=>playerFlat();
+      document.getElementById('judge-prompt').textContent='Drag to try a different region.';
+    }
+  } else {
+    setStatus('miss','No transit in these curves',
+      'The variation you selected is photon noise — random fluctuations every detector sees. '+
+      'A real transit dips consistently across all four channels at the same time. Try a different star.');
+    S.dragStart=-1; S.dragEnd=-1;
+    setPhase('judge');
+    for(let i=0;i<4;i++){
+      const c=document.getElementById(`lc-cell-${i}`);
+      if(c) c.classList.add('judgeable');
+    }
+    document.getElementById('flat-btn').style.display='block';
+    document.getElementById('flat-btn').textContent='No anomaly — curves look flat';
+    document.getElementById('flat-btn').onclick=()=>playerFlat();
+    document.getElementById('judge-prompt').textContent='Try marking a different region or choose another star.';
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  FINISH ROUND
+// ══════════════════════════════════════════════════
+function finishRound(correct, type) {
+  if (correct && type==='transit') {
+    const p=S.planetFact;
+    document.getElementById('pc-name').textContent=p.name;
+    document.getElementById('pc-name').style.color=p.color;
+    document.getElementById('pc-desc').textContent=p.desc;
+    document.getElementById('planet-card').style.display='block';
+    setPhase('result'); // mark step 5 visually
+    // also update ph4
+    document.getElementById('ph4').className='phase-step active';
+  }
+
+  setTimeout(()=>{
+    const p=S.planetFact;
+    document.getElementById('planet-ball').style.background=
+      `radial-gradient(circle at 33% 33%,${p.color}cc,${p.color}22)`;
+    document.getElementById('planet-ball').style.border=`2px solid ${p.color}55`;
+
+    document.getElementById('rc-title').textContent=
+      correct&&type==='transit'?'Exoplanet discovered':
+      correct?'Clean star confirmed':'Keep searching';
+    document.getElementById('rc-msg').textContent=
+      correct&&type==='transit'
+      ?'You detected the transit signal across all four wavelength channels.'
+      :correct
+      ?'Good work. This star shows no transit in progress — its light curves are flat.'
+      :'Transit signals can be very subtle — less than 1% brightness change. Keep practicing.';
+
+    document.getElementById('fact-card').innerHTML=
+      `<b style="color:${p.color}">${p.name}</b><br>`+
+      `<span style="font-size:10px">${p.desc}</span><br><br>`+
+      WL.map(w=>`<span style="color:${w.color};font-size:9px">▪ ${w.name}</span> `+
+        `<span style="font-size:9px;color:var(--muted)">dip: ${((1-w.dip)*100).toFixed(2)}% — ${w.note}</span>`
+      ).join('<br>');
+
+    const btn = document.getElementById('overlay-btn');
+    btn.textContent = 'Continue exploring this field';
+    btn.onclick = () => dismissOverlayAndResume();
+    document.getElementById('round-overlay').style.display='flex';
+  },1400);
+}
+
+// ══════════════════════════════════════════════════
+//  STATUS BOX
+// ══════════════════════════════════════════════════
+function setStatus(cls,title,body) {
+  const b=document.getElementById('status-box');
+  b.className=cls;
+  b.innerHTML=cls
+    ?`<div style="font-weight:bold;color:${cls==='success'?'var(--green)':'var(--red)'};margin-bottom:4px">${title}</div>`+
+     `<div style="color:var(--muted);font-size:10px;line-height:1.6">${body}</div>`
+    :`<div style="color:var(--muted);font-size:11px">${title}</div>`;
+}
+
+// ══════════════════════════════════════════════════
+//  TELESCOPE RENDER LOOP
+// ══════════════════════════════════════════════════
+let frame=0;
+function render(){
+  if (S.phase==='attract'){requestAnimationFrame(render);return;}
+  frame++;
+  const ctx=mainCvs.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+
+  S.stars.forEach((s,i)=>{
+    const fl=Math.sin(frame*.04+s.phi)*.055;
+    const rad=(8+s.brightness*12)*(1+fl*.08);
+    const al=.7+s.brightness*.3+fl*.07;
+
+    const g=ctx.createRadialGradient(s.x,s.y,0,s.x,s.y,rad*3.2);
+    g.addColorStop(0,s.baseColor+'bb'); g.addColorStop(1,s.baseColor+'00');
+    ctx.beginPath(); ctx.arc(s.x,s.y,rad*3.2,0,Math.PI*2);
+    ctx.fillStyle=g; ctx.fill();
+
+    ctx.beginPath(); ctx.arc(s.x,s.y,rad,0,Math.PI*2);
+    ctx.fillStyle=s.baseColor; ctx.globalAlpha=al; ctx.fill(); ctx.globalAlpha=1;
+
+    if (i===S.selectedIdx) {
+      ctx.beginPath(); ctx.arc(s.x,s.y,rad+11,0,Math.PI*2);
+      ctx.strokeStyle='#7ecfed'; ctx.lineWidth=1.5; ctx.stroke();
+      for(let t=0;t<4;t++){
+        const a=(t/4)*Math.PI*2+frame*.006;
+        ctx.beginPath();
+        ctx.moveTo(s.x+Math.cos(a)*(rad+15),s.y+Math.sin(a)*(rad+15));
+        ctx.lineTo(s.x+Math.cos(a)*(rad+22),s.y+Math.sin(a)*(rad+22));
+        ctx.stroke();
+      }
+    }
+
+    // Only reveal target glow after a confirmed correct discovery, never on a miss
+    if (S.planetDiscovered && i===S.targetIdx) {
+      const pr=rad+22+Math.sin(frame*.07)*5;
+      ctx.beginPath(); ctx.arc(s.x,s.y,pr,0,Math.PI*2);
+      ctx.strokeStyle='#7ecfed88'; ctx.lineWidth=2; ctx.stroke();
+    }
+
+    if (S.hintUsed&&i===S.targetIdx&&S.phase==='pick') {
+      const pct=(Math.sin(frame*.07)+1)*.5;
+      ctx.globalAlpha=.4+pct*.45;
+      ctx.beginPath(); ctx.arc(s.x,s.y,rad+28+pct*7,0,Math.PI*2);
+      ctx.strokeStyle='#f0c060'; ctx.lineWidth=2; ctx.stroke();
+      ctx.globalAlpha=1;
+    }
+  });
+
+  requestAnimationFrame(render);
+}
+
+// ══════════════════════════════════════════════════
+//  STAR CLICK
+// ══════════════════════════════════════════════════
+function starAt(cx,cy){
+  let best=-1,bd=46;
+  S.stars.forEach((s,i)=>{const d=Math.hypot(s.x-cx,s.y-cy);if(d<bd){best=i;bd=d;}});
+  return best;
+}
+
+telPanel.addEventListener('mousemove',e=>{
+  if(S.phase==='attract') return;
+  if(document.getElementById('round-overlay').style.display==='flex') return;
+  const r=telPanel.getBoundingClientRect();
+  reticle.style.display='block';
+  reticle.style.left=(e.clientX-r.left)+'px';
+  reticle.style.top=(e.clientY-r.top)+'px';
+});
+telPanel.addEventListener('mouseleave',()=>{reticle.style.display='none';});
+
+telPanel.addEventListener('click',e=>{
+  // Allow star switching in any phase except attract and the result overlay
+  const blocked=['attract'];
+  if(blocked.includes(S.phase)) return;
+  // If round overlay is visible, ignore telescope clicks
+  if(document.getElementById('round-overlay').style.display==='flex') return;
+
+  const r=telPanel.getBoundingClientRect();
+  const idx=starAt(e.clientX-r.left,e.clientY-r.top);
+  if(idx===-1) return;
+  reticle.style.display='none';
+
+  S.selectedIdx=idx;
+  S.hasTransit=(idx===S.targetIdx);
+  generateAllLC(S.hasTransit);
+  S.lcAnimT=0; S.lcDone=false;
+  S.dragStart=-1; S.dragEnd=-1; S.hoverFrac=-1;
+  // Do NOT hide planet-card — keep discovery visible while exploring other stars
+  document.getElementById('judge-prompt').textContent='';
+  document.getElementById('flat-btn').style.display='none';
+  for(let i=0;i<4;i++){
+    const c=document.getElementById(`lc-cell-${i}`);
+    if(c) c.classList.remove('judgeable');
+    const svg=document.getElementById(`lc-svg-${i}`);
+    if(svg) svg.innerHTML='';
+  }
+
+  setPhase('scan');
+  setStatus('','Scanning light curves across all four filters…','');
+  document.getElementById('footer-instr').textContent=
+    'Four channels scanning simultaneously. Watch for a consistent dip across all wavelengths.';
+});
+
+telPanel.addEventListener('touchend',e=>{
+  e.preventDefault();
+  const t=e.changedTouches[0];
+  telPanel.dispatchEvent(new MouseEvent('click',{clientX:t.clientX,clientY:t.clientY}));
+},{passive:false});
+
+// ══════════════════════════════════════════════════
+//  HINT
+// ══════════════════════════════════════════════════
+function giveHint(){
+  if(S.phase!=='pick') return;
+  S.hintUsed=true;
+  const s=S.stars[S.targetIdx];
+  setStatus('hint','Hint',
+    `The planet-bearing star is in the ${s.y<H/2?'upper':'lower'}-${s.x<W/2?'left':'right'} quadrant of the field.`);
+}
+
+// ══════════════════════════════════════════════════
+//  DISMISS OVERLAY — stay in same field, pick another star
+// ══════════════════════════════════════════════════
+function dismissOverlayAndResume(){
+  document.getElementById('round-overlay').style.display='none';
+  S.selectedIdx=-1;
+  S.lcData=[null,null,null,null]; S.lcAnimT=0; S.lcDone=false;
+  S.dragStart=-1; S.dragEnd=-1; S.hoverFrac=-1;
+  // Keep planet-card visible if planet was already discovered
+  document.getElementById('judge-prompt').textContent='';
+  document.getElementById('flat-btn').style.display='none';
+  for(let i=0;i<4;i++){
+    const c=document.getElementById(`lc-cell-${i}`);
+    if(c) c.classList.remove('judgeable');
+    const svg=document.getElementById(`lc-svg-${i}`);
+    if(svg) svg.innerHTML='';
+  }
+  setPhase('pick');
+  setStatus('','Click any star in the field to scan it.','');
+  document.getElementById('footer-instr').textContent=
+    'Same star field. Click any star to compare its light curves.';
+}
+
+// ══════════════════════════════════════════════════
+//  NEXT ROUND  — regenerates star field
+// ══════════════════════════════════════════════════
+function nextRound(){
+  document.getElementById('round-overlay').style.display='none';
+  S.round++;
+  S.selectedIdx=-1; S.hintUsed=false;
+  S.lcData=[null,null,null,null]; S.lcAnimT=0; S.lcDone=false;
+  S.dragStart=-1; S.dragEnd=-1; S.hoverFrac=-1;
+  S.planetFact=PLANETS[Math.floor(Math.random()*PLANETS.length)];
+  S.planetDiscovered=false;
+  document.getElementById('planet-card').style.display='none';
+  document.getElementById('judge-prompt').textContent='';
+  document.getElementById('flat-btn').style.display='none';
+  for(let i=0;i<4;i++){
+    const c=document.getElementById(`lc-cell-${i}`);
+    if(c) c.classList.remove('judgeable');
+    const svg=document.getElementById(`lc-svg-${i}`);
+    if(svg) svg.innerHTML='';
+  }
+
+  // Regenerate star field with a fixed transit position
+  resize(); drawStarfield();
+  S.stars=generateStars();
+  S.targetIdx=Math.floor(Math.random()*S.stars.length);
+  S.fieldTransitCenter=.28+Math.random()*.44;
+  S.fieldTransitWidth=.048+Math.random()*.038;
+
+  setPhase('pick');
+  setStatus('','Click a star in the field to begin scanning.','');
+  document.getElementById('footer-instr').textContent=
+    'New star field loaded. Click any star to lock on and scan its light curves.';
+}
+
+// ══════════════════════════════════════════════════
+//  ATTRACT ANIMATION
+// ══════════════════════════════════════════════════
+const alc=document.getElementById('attract-lc');
+const actx=alc.getContext('2d');
+let at=0;
+function animAttract(){
+  const w=alc.width,h=alc.height;
+  actx.fillStyle='#071419'; actx.fillRect(0,0,w,h);
+  actx.beginPath(); actx.strokeStyle='#7ecfed'; actx.lineWidth=1.8;
+  for(let i=0;i<=90;i++){
+    const x=(i/90)*w, t=((i/90)+at*.0025)%1;
+    let y=.12; const c=.44,dw=.10;
+    if(t>c-dw&&t<c+dw){const dt=(t-c)/dw;y+=.58*Math.max(0,1-dt*dt*1.1);}
+    const py=h-6-y*(h-12);
+    i===0?actx.moveTo(x,py):actx.lineTo(x,py);
+  }
+  actx.stroke();
+  const fx=w*((.44-at*.0025%1+1)%1);
+  if(fx>18&&fx<w-18){
+    actx.fillStyle='#f0c06033'; actx.fillRect(fx-14,3,28,h-8);
+    actx.fillStyle='#f0c060'; actx.font='9px Times New Roman';
+    actx.textAlign='center'; actx.fillText('transit dip',fx,14); actx.textAlign='left';
+  }
+  actx.fillStyle='#3a7088'; actx.font='8px Times New Roman';
+  actx.fillText('brightness vs time',5,h-3);
+  at++;
+  if(S.phase==='attract') requestAnimationFrame(animAttract);
+}
+animAttract();
+
+// ══════════════════════════════════════════════════
+//  START
+// ══════════════════════════════════════════════════
+function startGame(){
+  document.getElementById('attract').style.display='none';
+  S.planetFact=PLANETS[0];
+  S.planetDiscovered=false;
+  resize(); drawStarfield();
+  S.stars=generateStars();
+  S.targetIdx=Math.floor(Math.random()*S.stars.length);
+  S.fieldTransitCenter=.28+Math.random()*.44;
+  S.fieldTransitWidth=.048+Math.random()*.038;
+  buildLCStack();
+  setPhase('pick');
+  render();
+  renderAllLC();
+}
+
+document.getElementById('attract').addEventListener('click',startGame);
+document.getElementById('attract').addEventListener('touchend',e=>{
+  e.preventDefault(); startGame();
+},{passive:false});
+setTimeout(()=>{if(S.phase==='attract')startGame();},20000);
+
+// 5-min idle reset
+let lastAct=Date.now();
+['click','touchstart','mousemove'].forEach(ev=>
+  document.addEventListener(ev,()=>{ lastAct=Date.now(); }));
+setInterval(()=>{
+  if(Date.now()-lastAct>300000 && S.phase!=='attract'){
+    S.phase='attract'; S.score=0; S.round=1;
+    document.getElementById('attract').style.display='flex';
+    document.getElementById('round-overlay').style.display='none';
+    at=0; animAttract();
+  }
+},15000);
+
+window.addEventListener('resize',()=>{
+  if(S.phase!=='attract'){ resize(); drawStarfield(); }
+});
+</script>
+</body>
+</html>
